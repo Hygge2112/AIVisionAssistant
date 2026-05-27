@@ -66,4 +66,6 @@ dependencies {
     implementation("com.google.accompanist:accompanist-permissions:0.35.0-alpha")
     // Thư viện bổ sung bộ Icon đầy đủ cho Compose
     implementation("androidx.compose.material:material-icons-extended")
+    // Thư viện Google Gemini AI
+    implementation("com.google.ai.client.generativeai:generativeai:0.2.2")
 }
