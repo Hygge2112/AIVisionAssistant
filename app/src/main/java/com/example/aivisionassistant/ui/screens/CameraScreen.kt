@@ -26,7 +26,8 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun CameraContent() {
+// ĐÃ THÊM: Biến onPreviewViewCreated để truyền Camera ra ngoài
+fun CameraContent(onPreviewViewCreated: (PreviewView) -> Unit) {
     val permissionsState = rememberMultiplePermissionsState(
         permissions = listOf(
             Manifest.permission.CAMERA,
@@ -41,7 +42,8 @@ fun CameraContent() {
     }
 
     if (permissionsState.allPermissionsGranted) {
-        CameraPreviewScreen()
+        // Truyền tiếp "đường ống" xuống hàm bên dưới
+        CameraPreviewScreen(onPreviewViewCreated)
     } else {
         Box(
             modifier = Modifier.fillMaxSize().background(Color.DarkGray),
@@ -58,7 +60,8 @@ fun CameraContent() {
 }
 
 @Composable
-fun CameraPreviewScreen() {
+// ĐÃ THÊM: Nhận biến truyền vào
+fun CameraPreviewScreen(onPreviewViewCreated: (PreviewView) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
@@ -66,6 +69,10 @@ fun CameraPreviewScreen() {
     AndroidView(
         factory = { ctx ->
             val previewView = PreviewView(ctx)
+
+            // ĐÃ THÊM: Ngay khi Camera (PreviewView) được tạo ra, lập tức gửi nó ra ngoài!
+            onPreviewViewCreated(previewView)
+
             val executor = ContextCompat.getMainExecutor(ctx)
 
             cameraProviderFuture.addListener({

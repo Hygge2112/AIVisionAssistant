@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -23,49 +25,95 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.aivisionassistant.api.GeminiManager
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
-fun VoiceRecognitionScreen() {
+fun VoiceRecognitionScreen(previewView: PreviewView?) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Khởi tạo Gemini Manager
     val geminiManager = remember { GeminiManager() }
 
     var recognizedText by remember { mutableStateOf("Nhấn vào mic để bắt đầu nói...") }
-    var aiResponse by remember { mutableStateOf("") } // Biến lưu câu trả lời của AI
+    var aiResponse by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) } // Biến hiển thị trạng thái chờ AI suy nghĩ
+    var isLoading by remember { mutableStateOf(false) }
+
+    // Khởi tạo bộ đọc giọng nói (Text-To-Speech)
+    var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(context) {
+        val tts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                textToSpeech?.language = Locale("vi", "VN")
+            }
+        }
+        textToSpeech = tts
+        onDispose {
+            tts.stop()
+            tts.shutdown()
+        }
+    }
 
     val speechRecognizer = remember {
         SpeechRecognizer.createSpeechRecognizer(context).apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) { recognizedText = "Đang lắng nghe..." }
-                override fun onBeginningOfSpeech() { isListening = true; aiResponse = "" }
+
+                override fun onBeginningOfSpeech() {
+                    isListening = true
+                    aiResponse = ""
+                    textToSpeech?.stop()
+                }
+
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { isListening = false }
+
+                // ĐÃ CẬP NHẬT: Xử lý lỗi chuẩn cho điện thoại thật
                 override fun onError(error: Int) {
                     isListening = false
-                    recognizedText = "Không nghe rõ. Vui lòng thử lại! (Mã lỗi: $error)"
+                    isLoading = false
+
+                    val errorMessage = when (error) {
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Tôi không nghe thấy gì. Bạn có thể nói lại được không?"
+                        SpeechRecognizer.ERROR_NO_MATCH -> "Tôi chưa nghe rõ lệnh. Bạn vui lòng thử lại nhé."
+                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Lỗi mạng. Vui lòng kiểm tra lại 4G hoặc Wifi."
+                        else -> "Có lỗi âm thanh xảy ra. Vui lòng thử lại."
+                    }
+
+                    recognizedText = errorMessage
+                    textToSpeech?.speak(errorMessage, TextToSpeech.QUEUE_FLUSH, null, null)
                 }
+
+                // Xử lý khi người dùng nói thật
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
                         recognizedText = matches[0]
-
-                        // KHI NGHE XONG, GỌI API GEMINI
                         isLoading = true
+
                         coroutineScope.launch {
-                            aiResponse = geminiManager.getResponse(recognizedText)
+                            // Cắt ảnh từ Camera nền
+                            val bitmap = previewView?.bitmap
+
+                            val response = if (bitmap != null) {
+                                geminiManager.getResponseWithImage(recognizedText, bitmap)
+                            } else {
+                                geminiManager.getResponse(recognizedText)
+                            }
+
+                            aiResponse = response
                             isLoading = false
+                            textToSpeech?.speak(response, TextToSpeech.QUEUE_FLUSH, null, null)
                         }
                     }
                 }
+
                 override fun onPartialResults(partialResults: Bundle?) {
                     val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) { recognizedText = matches[0] }
                 }
+
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
         }
@@ -86,7 +134,7 @@ fun VoiceRecognitionScreen() {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.5f) // Đẩy chiều cao thẻ lên để có chỗ chứa câu trả lời dài
+            .fillMaxHeight(0.5f)
             .padding(horizontal = 16.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -98,7 +146,6 @@ fun VoiceRecognitionScreen() {
                 .fillMaxSize()
                 .padding(24.dp)
         ) {
-            // Phần hiển thị hội thoại (Có thể cuộn được)
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -106,7 +153,6 @@ fun VoiceRecognitionScreen() {
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Lời của người dùng
                 Text(
                     text = recognizedText,
                     style = MaterialTheme.typography.titleLarge,
@@ -115,14 +161,12 @@ fun VoiceRecognitionScreen() {
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
-                // Trạng thái AI đang suy nghĩ
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(32.dp), color = MaterialTheme.colorScheme.primary)
                 }
 
-                // Câu trả lời của AI
                 if (aiResponse.isNotEmpty()) {
-                    Divider(modifier = Modifier.padding(vertical = 16.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
                     Text(
                         text = aiResponse,
                         style = MaterialTheme.typography.bodyLarge,
@@ -132,7 +176,6 @@ fun VoiceRecognitionScreen() {
                 }
             }
 
-            // Nút bấm ghi âm luôn nằm ở dưới cùng
             Button(
                 onClick = {
                     if (isListening) speechRecognizer.stopListening() else speechRecognizer.startListening(speechIntent)

@@ -3,6 +3,7 @@ package com.example.aivisionassistant
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.camera.view.PreviewView // ĐÃ THÊM: Import thư viện camera
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -34,6 +35,9 @@ class MainActivity : ComponentActivity() {
 fun AIVisionApp() {
     var selectedTabIndex by remember { mutableIntStateOf(2) }
 
+    // BIẾN CẦU NỐI: Lưu giữ Camera để cắt ảnh bất cứ lúc nào
+    var cameraPreviewView by remember { mutableStateOf<PreviewView?>(null) }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -51,8 +55,8 @@ fun AIVisionApp() {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Lớp Camera ở dưới cùng
-            CameraContent()
+            // Lớp Camera ở dưới cùng: Hứng lấy camera và lưu vào biến cầu nối
+            CameraContent(onPreviewViewCreated = { cameraPreviewView = it })
 
             // Lớp phủ tối mờ Overlay
             Box(
@@ -69,7 +73,8 @@ fun AIVisionApp() {
                 contentAlignment = Alignment.BottomCenter
             ) {
                 when (selectedTabIndex) {
-                    1 -> VoiceRecognitionScreen()
+                    // TRUYỀN Camera từ biến cầu nối sang màn hình Giọng nói
+                    1 -> VoiceRecognitionScreen(cameraPreviewView)
                     2 -> VisionInfoCard()
                 }
             }
