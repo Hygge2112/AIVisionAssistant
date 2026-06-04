@@ -2,6 +2,7 @@ package com.example.aivisionassistant.ui.screens
 
 import android.Manifest
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -21,18 +22,19 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.example.aivisionassistant.ml.VisionAnalyzer // Import bộ phân tích
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-// ĐÃ THÊM: Biến onPreviewViewCreated để truyền Camera ra ngoài
-fun CameraContent(onPreviewViewCreated: (PreviewView) -> Unit) {
+fun CameraContent(
+    onPreviewViewCreated: (PreviewView) -> Unit,
+    // ĐÃ FIX: Nhận thêm biến Boolean (isDanger) để truyền trạng thái nguy hiểm ra ngoài
+    onObjectDetected: (String, String, Boolean) -> Unit
+) {
     val permissionsState = rememberMultiplePermissionsState(
-        permissions = listOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
+        permissions = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
     )
 
     LaunchedEffect(Unit) {
@@ -42,8 +44,7 @@ fun CameraContent(onPreviewViewCreated: (PreviewView) -> Unit) {
     }
 
     if (permissionsState.allPermissionsGranted) {
-        // Truyền tiếp "đường ống" xuống hàm bên dưới
-        CameraPreviewScreen(onPreviewViewCreated)
+        CameraPreviewScreen(onPreviewViewCreated, onObjectDetected)
     } else {
         Box(
             modifier = Modifier.fillMaxSize().background(Color.DarkGray),
@@ -60,8 +61,11 @@ fun CameraContent(onPreviewViewCreated: (PreviewView) -> Unit) {
 }
 
 @Composable
-// ĐÃ THÊM: Nhận biến truyền vào
-fun CameraPreviewScreen(onPreviewViewCreated: (PreviewView) -> Unit) {
+fun CameraPreviewScreen(
+    onPreviewViewCreated: (PreviewView) -> Unit,
+    // ĐÃ FIX: Nhận thêm biến Boolean (isDanger)
+    onObjectDetected: (String, String, Boolean) -> Unit
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
@@ -69,22 +73,37 @@ fun CameraPreviewScreen(onPreviewViewCreated: (PreviewView) -> Unit) {
     AndroidView(
         factory = { ctx ->
             val previewView = PreviewView(ctx)
-
-            // ĐÃ THÊM: Ngay khi Camera (PreviewView) được tạo ra, lập tức gửi nó ra ngoài!
             onPreviewViewCreated(previewView)
 
             val executor = ContextCompat.getMainExecutor(ctx)
 
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
+
+                // 1. Luồng hiển thị (Preview)
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
+
+                // 2. Luồng quét vật cản (ImageAnalysis)
+                val imageAnalyzer = ImageAnalysis.Builder()
+                    // Chỉ lấy frame mới nhất để máy thật không bị nóng và lag
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                    .also {
+                        // ĐÃ FIX: Hứng 3 biến (label, distance, isDanger) từ VisionAnalyzer
+                        it.setAnalyzer(executor, VisionAnalyzer { label, distance, isDanger ->
+                            // Gửi kết quả phát hiện được ra ngoài
+                            onObjectDetected(label, distance, isDanger)
+                        })
+                    }
+
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                 try {
                     cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+                    // Gắn cả mắt nhìn và não quét vào Camera
+                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalyzer)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

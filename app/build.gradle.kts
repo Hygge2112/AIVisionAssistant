@@ -68,4 +68,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     // Thư viện Google Gemini AI bản mới nhất
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+    // Thư viện Google ML Kit để nhận diện vật cản thời gian thực (Offline)
+    implementation("com.google.mlkit:object-detection:17.0.2")
+    // Thư viện phân loại chính xác hàng trăm đồ vật (Nâng cấp)
+    implementation("com.google.mlkit:image-labeling:17.0.9")
 }

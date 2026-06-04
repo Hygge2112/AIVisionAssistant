@@ -1,15 +1,20 @@
 package com.example.aivisionassistant
 
+import android.content.Context
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.camera.view.PreviewView // ĐÃ THÊM: Import thư viện camera
-import androidx.compose.foundation.background
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.aivisionassistant.ui.components.*
 import com.example.aivisionassistant.ui.screens.*
@@ -20,10 +25,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AIVisionAssistantTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     AIVisionApp()
                 }
             }
@@ -34,48 +36,69 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AIVisionApp() {
     var selectedTabIndex by remember { mutableIntStateOf(2) }
-
-    // BIẾN CẦU NỐI: Lưu giữ Camera để cắt ảnh bất cứ lúc nào
     var cameraPreviewView by remember { mutableStateOf<PreviewView?>(null) }
 
+    var detectedObject by remember { mutableStateOf("Đang quét...") }
+    var detectedDistance by remember { mutableStateOf("...") }
+    var isDangerZone by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val vibrator = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+    }
+
+    LaunchedEffect(isDangerZone) {
+        if (isDangerZone) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(500)
+            }
+        }
+    }
+
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.systemBars),
+        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
         topBar = { TopBarUI() },
         bottomBar = {
-            BottomNavigationBarUI(
-                selectedIndex = selectedTabIndex,
-                onItemSelected = { selectedTabIndex = it }
-            )
+            BottomNavigationBarUI(selectedIndex = selectedTabIndex, onItemSelected = { selectedTabIndex = it })
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // Lớp Camera ở dưới cùng: Hứng lấy camera và lưu vào biến cầu nối
-            CameraContent(onPreviewViewCreated = { cameraPreviewView = it })
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
 
-            // Lớp phủ tối mờ Overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(CameraOverlay)
+            // Lớp 1: Camera hiển thị full màn hình
+            CameraContent(
+                onPreviewViewCreated = { cameraPreviewView = it },
+                onObjectDetected = { objName, distance, isDanger ->
+                    detectedObject = objName
+                    detectedDistance = distance
+                    isDangerZone = isDanger
+                }
             )
 
-            // Lớp hiển thị UI theo Tab
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 16.dp),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                when (selectedTabIndex) {
-                    // TRUYỀN Camera từ biến cầu nối sang màn hình Giọng nói
-                    1 -> VoiceRecognitionScreen(cameraPreviewView)
-                    2 -> VisionInfoCard()
+            // Lớp 2: Giao diện AR nổi đè lên trên Camera
+            when (selectedTabIndex) {
+                // Tab Giọng Nói (Nếu bạn bấm nhầm) thì nó vẫn hiện y hệt Tab Quét
+                1, 2 -> {
+                    Box(modifier = Modifier.fillMaxSize()) {
+
+                        // Ở TRÊN CÙNG: Phụ đề Giọng nói & Trả lời của AI
+                        Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
+                            VoiceRecognitionScreen(cameraPreviewView)
+                        }
+
+                        // Ở DƯỚI CÙNG: Thẻ báo nguy hiểm rung/màu đỏ
+                        Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
+                            VisionInfoCard(detectedObject, detectedDistance, isDangerZone)
+                        }
+                    }
                 }
             }
         }
