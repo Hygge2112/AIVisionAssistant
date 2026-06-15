@@ -41,12 +41,11 @@ fun TopBarUI() {
 
 @Composable
 fun BottomNavigationBarUI(selectedIndex: Int, onItemSelected: (Int) -> Unit) {
+    // ĐÃ FIX: Chỉ giữ lại 3 Tab chính yếu nhất
     val tabs = listOf(
         Pair("SOS", Icons.Default.Warning),
-        Pair("Giọng nói", Icons.Default.Mic),
         Pair("Quét", Icons.Default.Search),
-        Pair("Người thân", Icons.Default.Edit),
-        Pair("Âm thanh", Icons.Default.Notifications)
+        Pair("Người thân", Icons.Default.Person) // Đổi icon sang hình người cho trực quan
     )
 
     Row(

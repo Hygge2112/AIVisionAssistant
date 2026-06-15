@@ -11,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.example.aivisionassistant.ui.components.*
 import com.example.aivisionassistant.ui.screens.*
 import com.example.aivisionassistant.ui.theme.*
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,9 +39,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AIVisionApp() {
-    var selectedTabIndex by remember { mutableIntStateOf(2) }
-    var cameraPreviewView by remember { mutableStateOf<PreviewView?>(null) }
+    // ĐÃ FIX 1: Dùng PagerState thay cho selectedTabIndex để quản lý trạng thái vuốt
+    // Khởi tạo ở trang số 1 (Trang Quét Camera)
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    val coroutineScope = rememberCoroutineScope()
 
+    var cameraPreviewView by remember { mutableStateOf<PreviewView?>(null) }
     var detectedObject by remember { mutableStateOf("Đang quét...") }
     var detectedDistance by remember { mutableStateOf("...") }
     var isDangerZone by remember { mutableStateOf(false) }
@@ -54,13 +60,15 @@ fun AIVisionApp() {
         }
     }
 
+    // Cơ chế báo rung khi gặp vật cản
     LaunchedEffect(isDangerZone) {
         if (isDangerZone) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+                // Đã tối ưu: Nhịp rung kép (Tít-Tít) cảnh báo mạnh hơn cho người khiếm thị
+                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 150, 100, 150), -1))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(500)
+                vibrator.vibrate(longArrayOf(0, 150, 100, 150), -1)
             }
         }
     }
@@ -69,31 +77,41 @@ fun AIVisionApp() {
         modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
         topBar = { TopBarUI() },
         bottomBar = {
-            BottomNavigationBarUI(selectedIndex = selectedTabIndex, onItemSelected = { selectedTabIndex = it })
-        }
-    ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-
-            // Lớp 1: Camera hiển thị full màn hình
-            CameraContent(
-                onPreviewViewCreated = { cameraPreviewView = it },
-                onObjectDetected = { objName, distance, isDanger ->
-                    detectedObject = objName
-                    detectedDistance = distance
-                    isDangerZone = isDanger
+            BottomNavigationBarUI(
+                selectedIndex = pagerState.currentPage,
+                onItemSelected = { index ->
+                    // Bấm nút thì sẽ vuốt mượt mà tới trang đó
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(index)
+                    }
                 }
             )
+        }
+    ) { paddingValues ->
 
-            // Lớp 2: Giao diện nổi đè lên trên Camera tùy theo Tab
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 16.dp),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                when (selectedTabIndex) {
+        // ĐÃ FIX 2: Bọc toàn bộ các trang vào HorizontalPager
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) { page ->
+
+            // Camera luôn chạy ngầm ở tất cả các trang để không bị gián đoạn âm thanh/nhận diện
+            Box(modifier = Modifier.fillMaxSize()) {
+                CameraContent(
+                    onPreviewViewCreated = { cameraPreviewView = it },
+                    onObjectDetected = { objName, distance, isDanger ->
+                        detectedObject = objName
+                        detectedDistance = distance
+                        isDangerZone = isDanger
+                    }
+                )
+
+                // Lớp giao diện đè lên camera tùy theo Trang đang vuốt tới
+                when (page) {
                     0 -> {
-                        // Tab 0: Toàn màn hình SOS đè lên Camera
+                        // TRANG TRÁI CÙNG: SOS & Dẫn đường
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -102,22 +120,24 @@ fun AIVisionApp() {
                             SosScreen()
                         }
                     }
-                    1, 2 -> {
-                        // Tab Giọng Nói và Quét AR (Hiển thị xuyên thấu Camera)
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            // Ở TRÊN CÙNG: Phụ đề Giọng nói & Trả lời của AI
+                    1 -> {
+                        // TRANG Ở GIỮA: Mắt thần AI (Hiển thị xuyên thấu)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = 16.dp),
+                            contentAlignment = Alignment.BottomCenter
+                        ) {
                             Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
                                 VoiceRecognitionScreen(cameraPreviewView)
                             }
-
-                            // Ở DƯỚI CÙNG: Thẻ báo nguy hiểm rung/màu đỏ
                             Box(modifier = Modifier.align(Alignment.BottomCenter)) {
                                 VisionInfoCard(detectedObject, detectedDistance, isDangerZone)
                             }
                         }
                     }
-                    3 -> {
-                        // ĐÃ THÊM: Tab Giám sát cho Người Thân (Hiển thị toàn màn hình, che camera đi)
+                    2 -> {
+                        // TRANG PHẢI CÙNG: Người thân giám sát
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
