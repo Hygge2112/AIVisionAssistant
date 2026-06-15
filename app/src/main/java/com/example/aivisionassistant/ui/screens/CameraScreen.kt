@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -22,19 +23,24 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.example.aivisionassistant.ml.VisionAnalyzer // Import bộ phân tích
+import com.example.aivisionassistant.ml.VisionAnalyzer
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import java.util.concurrent.Executors // ĐÃ THÊM: Thư viện quản lý Đa luồng
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraContent(
     onPreviewViewCreated: (PreviewView) -> Unit,
-    // ĐÃ FIX: Nhận thêm biến Boolean (isDanger) để truyền trạng thái nguy hiểm ra ngoài
     onObjectDetected: (String, String, Boolean) -> Unit
 ) {
     val permissionsState = rememberMultiplePermissionsState(
-        permissions = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        permissions = listOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
     )
 
     LaunchedEffect(Unit) {
@@ -51,7 +57,7 @@ fun CameraContent(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "Đang chờ quyền Camera và Micro...\nHãy cấp quyền để tiếp tục.",
+                text = "Đang chờ quyền Camera, Micro và Vị trí...\nApp cần quyền Vị trí để gửi SOS khẩn cấp.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.surface,
                 textAlign = TextAlign.Center
@@ -63,37 +69,45 @@ fun CameraContent(
 @Composable
 fun CameraPreviewScreen(
     onPreviewViewCreated: (PreviewView) -> Unit,
-    // ĐÃ FIX: Nhận thêm biến Boolean (isDanger)
     onObjectDetected: (String, String, Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
+    // ĐÃ FIX 1: Tạo một "Nhà máy" ngầm riêng biệt chỉ để chạy AI
+    val aiExecutor = remember { Executors.newSingleThreadExecutor() }
+
+    // Tự động dọn dẹp bộ nhớ luồng ngầm khi người dùng thoát màn hình
+    DisposableEffect(Unit) {
+        onDispose {
+            aiExecutor.shutdown()
+        }
+    }
+
     AndroidView(
         factory = { ctx ->
-            val previewView = PreviewView(ctx)
+            val previewView = PreviewView(ctx).apply {
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            }
             onPreviewViewCreated(previewView)
 
-            val executor = ContextCompat.getMainExecutor(ctx)
+            // Luồng chính (Chỉ dùng để vẽ Camera lên màn hình)
+            val mainExecutor = ContextCompat.getMainExecutor(ctx)
 
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
 
-                // 1. Luồng hiển thị (Preview)
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
 
-                // 2. Luồng quét vật cản (ImageAnalysis)
                 val imageAnalyzer = ImageAnalysis.Builder()
-                    // Chỉ lấy frame mới nhất để máy thật không bị nóng và lag
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
-                        // ĐÃ FIX: Hứng 3 biến (label, distance, isDanger) từ VisionAnalyzer
-                        it.setAnalyzer(executor, VisionAnalyzer { label, distance, isDanger ->
-                            // Gửi kết quả phát hiện được ra ngoài
+                        // ĐÃ FIX 2: Giao việc phân tích ảnh cho Luồng ngầm (aiExecutor) xử lý!
+                        it.setAnalyzer(aiExecutor, VisionAnalyzer(ctx) { label, distance, isDanger ->
                             onObjectDetected(label, distance, isDanger)
                         })
                     }
@@ -102,12 +116,11 @@ fun CameraPreviewScreen(
 
                 try {
                     cameraProvider.unbindAll()
-                    // Gắn cả mắt nhìn và não quét vào Camera
                     cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalyzer)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-            }, executor)
+            }, mainExecutor)
             previewView
         },
         modifier = Modifier.fillMaxSize()

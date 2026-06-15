@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.gms.google.services)
 }
 
 android {
@@ -48,6 +49,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.firebase.database)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
@@ -72,4 +74,10 @@ dependencies {
     implementation("com.google.mlkit:object-detection:17.0.2")
     // Thư viện phân loại chính xác hàng trăm đồ vật (Nâng cấp)
     implementation("com.google.mlkit:image-labeling:17.0.9")
+    // Thư viện lấy tọa độ GPS của Google
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+    // Thư viện cầu nối giúp Coroutine gọi được các dịch vụ của Google
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    // Thư viện quét vật thể tốc độ cao của TensorFlow Lite
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
 }

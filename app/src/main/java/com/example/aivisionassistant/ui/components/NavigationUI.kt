@@ -45,7 +45,7 @@ fun BottomNavigationBarUI(selectedIndex: Int, onItemSelected: (Int) -> Unit) {
         Pair("SOS", Icons.Default.Warning),
         Pair("Giọng nói", Icons.Default.Mic),
         Pair("Quét", Icons.Default.Search),
-        Pair("Dịch", Icons.Default.Edit),
+        Pair("Người thân", Icons.Default.Edit),
         Pair("Âm thanh", Icons.Default.Notifications)
     )
 

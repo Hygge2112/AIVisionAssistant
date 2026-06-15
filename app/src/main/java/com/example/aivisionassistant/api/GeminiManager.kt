@@ -8,7 +8,7 @@ import kotlinx.coroutines.withContext
 
 class GeminiManager {
     // TODO: BẠN HÃY DÁN API KEY MỚI TẠO VÀO ĐÂY (Tuyệt đối không chia sẻ cho ai)
-    private val apiKey = "YOUR_API_KEY_HERE"
+    private val apiKey = "YOUR_API_KEY"
 
     private val generativeModel = GenerativeModel(
         modelName = "gemini-2.5-flash",

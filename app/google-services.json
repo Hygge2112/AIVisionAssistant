@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "893942052978",
+    "project_id": "aivisionassistant",
+    "storage_bucket": "aivisionassistant.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:893942052978:android:6f1474482433257216aaeb",
+        "android_client_info": {
+          "package_name": "com.example.aivisionassistant"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnGo4YTXwWprCxyyzv5Ui0X1awYHF8NKs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

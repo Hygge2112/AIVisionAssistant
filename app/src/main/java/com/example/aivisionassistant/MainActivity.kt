@@ -9,6 +9,7 @@ import android.os.VibratorManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -83,20 +84,46 @@ fun AIVisionApp() {
                 }
             )
 
-            // Lớp 2: Giao diện AR nổi đè lên trên Camera
-            when (selectedTabIndex) {
-                // Tab Giọng Nói (Nếu bạn bấm nhầm) thì nó vẫn hiện y hệt Tab Quét
-                1, 2 -> {
-                    Box(modifier = Modifier.fillMaxSize()) {
-
-                        // Ở TRÊN CÙNG: Phụ đề Giọng nói & Trả lời của AI
-                        Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
-                            VoiceRecognitionScreen(cameraPreviewView)
+            // Lớp 2: Giao diện nổi đè lên trên Camera tùy theo Tab
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 16.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                when (selectedTabIndex) {
+                    0 -> {
+                        // Tab 0: Toàn màn hình SOS đè lên Camera
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        ) {
+                            SosScreen()
                         }
+                    }
+                    1, 2 -> {
+                        // Tab Giọng Nói và Quét AR (Hiển thị xuyên thấu Camera)
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            // Ở TRÊN CÙNG: Phụ đề Giọng nói & Trả lời của AI
+                            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
+                                VoiceRecognitionScreen(cameraPreviewView)
+                            }
 
-                        // Ở DƯỚI CÙNG: Thẻ báo nguy hiểm rung/màu đỏ
-                        Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)) {
-                            VisionInfoCard(detectedObject, detectedDistance, isDangerZone)
+                            // Ở DƯỚI CÙNG: Thẻ báo nguy hiểm rung/màu đỏ
+                            Box(modifier = Modifier.align(Alignment.BottomCenter)) {
+                                VisionInfoCard(detectedObject, detectedDistance, isDangerZone)
+                            }
+                        }
+                    }
+                    3 -> {
+                        // ĐÃ THÊM: Tab Giám sát cho Người Thân (Hiển thị toàn màn hình, che camera đi)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        ) {
+                            GuardianScreen()
                         }
                     }
                 }

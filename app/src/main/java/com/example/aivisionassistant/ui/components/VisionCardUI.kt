@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -21,19 +22,29 @@ fun VisionInfoCard(detectedObject: String, detectedDistance: String, isDanger: B
         "Đang quét..."
     } else {
         detectedObject.split(",").map { obj ->
-            when(obj.trim()) {
-                // ĐÃ FIX: Gom toàn bộ các từ chỉ bộ phận, hành động vào chữ "Người"
+            // ĐÃ FIX 1: Tự động viết hoa chữ cái đầu để từ điển của bạn "hiểu" được nhãn của YOLO (person -> Person)
+            val formattedObj = obj.trim().replaceFirstChar { it.uppercase() }
+
+            when(formattedObj) {
+                // Người và các bộ phận
                 "Person", "Man", "Woman", "Human", "Boy", "Girl", "Face", "Head", "Clothing",
                 "Hand", "Arm", "Leg", "Sitting", "Standing", "Hair", "Smile", "Skin", "Selfie", "Portrait", "Glasses" -> "Người"
+
+                // ĐÃ FIX 2: Bổ sung phương tiện giao thông đường phố cho YOLO
+                "Car", "Auto" -> "Ô tô"
+                "Motorcycle", "Motorbike" -> "Xe máy"
+                "Bicycle", "Bike" -> "Xe đạp"
+                "Bus" -> "Xe buýt"
+                "Truck" -> "Xe tải"
 
                 // Đồ đạc
                 "Chair", "Couch", "Sofa" -> "Cái ghế"
                 "Monitor", "Screen" -> "Màn hình"
-                "Desk", "Table" -> "Cái bàn"
+                "Desk", "Table", "Dining table" -> "Cái bàn"
                 "Television", "Tv" -> "Tivi"
                 "Computer keyboard", "Keyboard" -> "Bàn phím"
                 "Laptop", "Computer" -> "Máy tính"
-                "Mobile phone", "Phone", "Smartphone" -> "Điện thoại"
+                "Mobile phone", "Phone", "Smartphone", "Cell phone" -> "Điện thoại"
                 "Coffee cup", "Cup", "Mug", "Glass" -> "Cái cốc"
                 "Bottle", "Water bottle" -> "Chai nước"
 
@@ -41,12 +52,12 @@ fun VisionInfoCard(detectedObject: String, detectedDistance: String, isDanger: B
                 "Door" -> "Cánh cửa"
                 "Wall" -> "Bức tường"
                 "Room", "Interior design", "Building" -> "Căn phòng"
-                "Plant", "Tree", "Flower" -> "Cây cối"
+                "Plant", "Tree", "Flower", "Potted plant" -> "Cây cối"
 
-                else -> obj.trim()
+                else -> formattedObj
             }
         }
-            .distinct() // Xóa các chữ "Người" bị lặp lại (VD: Nhận diện thấy Hand và Face thì chỉ ghi "Người" 1 lần)
+            .distinct() // Xóa các chữ bị lặp lại
             .take(3)
             .joinToString(", ")
     }
@@ -73,11 +84,22 @@ fun VisionInfoCard(detectedObject: String, detectedDistance: String, isDanger: B
                 ) {
                     Icon(Icons.Default.Warning, contentDescription = "Cảnh báo", tint = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("CẢNH BÁO KHẨN CẤP", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleLarge)
-                        Text("Có vật cản ngay phía trước", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge)
+
+                    // ĐÃ FIX 3: Chia tỷ lệ không gian 1.5 (Bên trái chiếm nhiều chỗ hơn)
+                    Column(modifier = Modifier.weight(1.5f)) {
+                        // Hạ font xuống titleMedium để không bị tràn
+                        Text("CẢNH BÁO KHẨN CẤP", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                        Text("Có vật cản ngay phía trước", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                     }
-                    Text(detectedDistance, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.headlineMedium)
+
+                    // ĐÃ FIX 4: Chia tỷ lệ không gian 1.0 (Bên phải nếu quá dài sẽ tự rớt xuống dòng, không ép lề trái nữa)
+                    Text(
+                        text = detectedDistance,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
 
@@ -107,10 +129,18 @@ fun InfoRowItem(icon: ImageVector, title: String, description: String, distance:
             Icon(icon, contentDescription = null, tint = iconTint)
         }
         Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-            Text(description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        // ĐÃ FIX 5: Áp dụng chia tỷ lệ tương tự cho thẻ Thông tin bên dưới
+        Column(modifier = Modifier.weight(1.5f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(distance, style = MaterialTheme.typography.headlineMedium, color = iconTint)
+        Text(
+            text = distance,
+            style = MaterialTheme.typography.titleMedium,
+            color = iconTint,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
