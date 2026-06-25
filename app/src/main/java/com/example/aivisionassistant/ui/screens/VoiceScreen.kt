@@ -34,10 +34,14 @@ fun VoiceRecognitionScreen(previewView: PreviewView?) {
     val coroutineScope = rememberCoroutineScope()
     val geminiManager = remember { GeminiManager() }
 
-    var recognizedText by remember { mutableStateOf("Hệ thống đã sẵn sàng...") }
+    var recognizedText by remember { mutableStateOf("Sẵn sàng nhận lệnh...") }
     var aiResponse by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
+    var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
+
+    // Biến kích hoạt khởi tạo lại SpeechRecognizer một cách an toàn
+    var speechRecognizerTrigger by remember { mutableStateOf(0) }
 
     val speechIntent = remember {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -47,84 +51,120 @@ fun VoiceRecognitionScreen(previewView: PreviewView?) {
         }
     }
 
-    val speechRecognizer = remember {
-        SpeechRecognizer.createSpeechRecognizer(context).apply {
-            setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { recognizedText = "Tôi đang nghe đây..." }
-                override fun onBeginningOfSpeech() { isListening = true; aiResponse = "" }
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() { isListening = false }
+    // Quản lý Vòng đời an toàn của Bộ nhận diện giọng nói
+    DisposableEffect(speechRecognizerTrigger) {
+        val speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
 
-                override fun onError(error: Int) {
-                    isListening = false
-                    isLoading = false
-                    if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) {
-                        recognizedText = "Đang chờ lệnh từ bạn..."
-                        coroutineScope.launch(Dispatchers.Main) { startListening(speechIntent) }
-                    } else {
-                        recognizedText = "Lỗi mạng. Vui lòng kiểm tra lại."
-                    }
-                }
+        speechRecognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                recognizedText = "Tôi đang nghe bạn nói..."
+                isListening = true
+            }
+            override fun onBeginningOfSpeech() {
+                aiResponse = ""
+            }
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                isListening = false
+            }
 
-                override fun onResults(results: Bundle?) {
-                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!matches.isNullOrEmpty()) {
-                        recognizedText = matches[0]
-                        isLoading = true
-                        coroutineScope.launch {
-                            val bitmap = previewView?.bitmap
-                            val response = if (bitmap != null) {
-                                geminiManager.getResponseWithImage(recognizedText, bitmap)
-                            } else {
-                                geminiManager.getResponse(recognizedText)
-                            }
-                            aiResponse = response
-                            isLoading = false
+            override fun onError(error: Int) {
+                isListening = false
+                isLoading = false
+
+                // BIỆN PHÁP SỬA LỖI: Nếu Mic bị ngắt/hết hạn, ta hủy phiên cũ và kích hoạt làm mới Session
+                speechRecognizerTrigger++
+            }
+
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    recognizedText = matches[0]
+                    isLoading = true
+
+                    // Phát âm thanh báo hiệu hệ thống bắt đầu xử lý ảnh/văn bản
+                    textToSpeech?.speak("Đang kiểm tra", TextToSpeech.QUEUE_FLUSH, null, "PROCESSING")
+
+                    coroutineScope.launch {
+                        val bitmap = previewView?.bitmap
+                        val response = if (bitmap != null) {
+                            geminiManager.getResponseWithImage(recognizedText, bitmap)
+                        } else {
+                            geminiManager.getResponse(recognizedText)
                         }
+                        aiResponse = response
+                        isLoading = false
                     }
+                } else {
+                    // Nếu không nhận được chữ, khởi động lại bộ lắng nghe
+                    speechRecognizerTrigger++
                 }
-                override fun onPartialResults(partialResults: Bundle?) {
-                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    if (!matches.isNullOrEmpty()) { recognizedText = matches[0] }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    recognizedText = matches[0]
                 }
-                override fun onEvent(eventType: Int, params: Bundle?) {}
-            })
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        // Bắt đầu lắng nghe ngay khi phiên làm việc được thiết lập sạch sẽ
+        speechRecognizer.startListening(speechIntent)
+
+        onDispose {
+            speechRecognizer.stopListening()
+            speechRecognizer.cancel()
+            speechRecognizer.destroy()
         }
     }
 
-    var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
+    // Quản lý TextToSpeech và điều phối Luồng loa phát
     DisposableEffect(context) {
         var ttsInstance: TextToSpeech? = null
         ttsInstance = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 ttsInstance?.setLanguage(Locale("vi", "VN"))
+
                 ttsInstance?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) {
-                        coroutineScope.launch(Dispatchers.Main) { speechRecognizer.startListening(speechIntent) }
+                    override fun onStart(utteranceId: String?) {
+                        // Không làm gì để tránh xung đột ngang luồng
                     }
+
+                    override fun onDone(utteranceId: String?) {
+                        // Khi AI đọc xong nội dung văn bản/vật thể, ép làm mới luồng Mic để nghe câu hỏi tiếp theo
+                        coroutineScope.launch(Dispatchers.Main) {
+                            speechRecognizerTrigger++
+                        }
+                    }
+
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {}
                 })
-                ttsInstance?.speak("Xin chào, tôi có thể giúp gì được cho bạn?", TextToSpeech.QUEUE_FLUSH, null, "GREETING")
+
+                // Câu chào duy nhất khi mở màn hình
+                ttsInstance?.speak("Xin chào tôi có thể giúp gì cho bạn", TextToSpeech.QUEUE_FLUSH, null, "GREETING")
             }
         }
         textToSpeech = ttsInstance
+
         onDispose {
             ttsInstance?.stop()
             ttsInstance?.shutdown()
-            speechRecognizer.destroy()
         }
     }
 
+    // Theo dõi câu trả lời từ Gemini để phát ra loa
     LaunchedEffect(aiResponse) {
         if (aiResponse.isNotEmpty()) {
             textToSpeech?.speak(aiResponse, TextToSpeech.QUEUE_FLUSH, null, "AI_RESPONSE")
         }
     }
 
-    // ĐÃ FIX: Giao diện phụ đề nổi (Không viền, Không nền che khuất Camera)
+    // Layout giao diện hiển thị trong suốt đè lên Camera Preview
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -135,23 +175,21 @@ fun VoiceRecognitionScreen(previewView: PreviewView?) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Icon Mic nhỏ gọn báo trạng thái Đỏ (Đang nghe)
             Icon(
                 imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicNone,
-                contentDescription = "Mic",
+                contentDescription = "Mic Status",
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .background(
-                        color = if (isListening) MaterialTheme.colorScheme.error else Color.Black.copy(alpha = 0.4f),
+                        color = if (isListening) MaterialTheme.colorScheme.error else Color.Black.copy(alpha = 0.5f),
                         shape = CircleShape
                     )
-                    .padding(8.dp),
+                    .padding(10.dp),
                 tint = Color.White
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Phụ đề: Lời người dùng nói
             if (recognizedText.isNotEmpty()) {
                 Text(
                     text = recognizedText,
@@ -166,16 +204,15 @@ fun VoiceRecognitionScreen(previewView: PreviewView?) {
 
             if (isLoading) {
                 Spacer(modifier = Modifier.height(8.dp))
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                CircularProgressIndicator(modifier = Modifier.size(26.dp), color = Color.White)
             }
 
-            // Phụ đề: AI trả lời
             if (aiResponse.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = aiResponse,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = Color.Cyan, // Chữ màu Cyan phát sáng cho dễ đọc trên nền camera
+                    color = Color.Cyan,
                     modifier = Modifier
                         .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                         .padding(16.dp),

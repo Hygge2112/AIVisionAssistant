@@ -39,8 +39,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AIVisionApp() {
-    // ĐÃ FIX 1: Dùng PagerState thay cho selectedTabIndex để quản lý trạng thái vuốt
-    // Khởi tạo ở trang số 1 (Trang Quét Camera)
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
     val coroutineScope = rememberCoroutineScope()
 
@@ -60,11 +58,9 @@ fun AIVisionApp() {
         }
     }
 
-    // Cơ chế báo rung khi gặp vật cản
     LaunchedEffect(isDangerZone) {
         if (isDangerZone) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Đã tối ưu: Nhịp rung kép (Tít-Tít) cảnh báo mạnh hơn cho người khiếm thị
                 vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 150, 100, 150), -1))
             } else {
                 @Suppress("DEPRECATION")
@@ -80,7 +76,6 @@ fun AIVisionApp() {
             BottomNavigationBarUI(
                 selectedIndex = pagerState.currentPage,
                 onItemSelected = { index ->
-                    // Bấm nút thì sẽ vuốt mượt mà tới trang đó
                     coroutineScope.launch {
                         pagerState.animateScrollToPage(index)
                     }
@@ -89,29 +84,29 @@ fun AIVisionApp() {
         }
     ) { paddingValues ->
 
-        // ĐÃ FIX 2: Bọc toàn bộ các trang vào HorizontalPager
-        HorizontalPager(
-            state = pagerState,
+        // ĐÃ SỬA: Đưa CameraContent ra NGOÀI HorizontalPager để bảo vệ vòng đời camera đơn nhiệm không bị đơ
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-        ) { page ->
+        ) {
+            CameraContent(
+                onPreviewViewCreated = { cameraPreviewView = it },
+                onObjectDetected = { objName, distance, isDanger ->
+                    detectedObject = objName
+                    detectedDistance = distance
+                    isDangerZone = isDanger
+                }
+            )
 
-            // Camera luôn chạy ngầm ở tất cả các trang để không bị gián đoạn âm thanh/nhận diện
-            Box(modifier = Modifier.fillMaxSize()) {
-                CameraContent(
-                    onPreviewViewCreated = { cameraPreviewView = it },
-                    onObjectDetected = { objName, distance, isDanger ->
-                        detectedObject = objName
-                        detectedDistance = distance
-                        isDangerZone = isDanger
-                    }
-                )
-
-                // Lớp giao diện đè lên camera tùy theo Trang đang vuốt tới
+            // Các trang chức năng chỉ là lớp phủ trong suốt trượt lên trên Camera
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
                 when (page) {
                     0 -> {
-                        // TRANG TRÁI CÙNG: SOS & Dẫn đường
+                        // TRANG TRÁI CÙNG: SOS (Có nền background che camera để bảo mật thông tin)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -121,7 +116,7 @@ fun AIVisionApp() {
                         }
                     }
                     1 -> {
-                        // TRANG Ở GIỮA: Mắt thần AI (Hiển thị xuyên thấu)
+                        // TRANG Ở GIỮA: Mắt thần AI (Không nền - Hiển thị xuyên thấu ra Camera sau)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -137,7 +132,7 @@ fun AIVisionApp() {
                         }
                     }
                     2 -> {
-                        // TRANG PHẢI CÙNG: Người thân giám sát
+                        // TRANG PHẢI CÙNG: Người thân giám sát (Có nền background)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
