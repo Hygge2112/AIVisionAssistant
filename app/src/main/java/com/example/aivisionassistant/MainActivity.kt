@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.example.aivisionassistant.ui.components.*
 import com.example.aivisionassistant.ui.screens.*
 import com.example.aivisionassistant.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -39,7 +40,33 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AIVisionApp() {
-    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    val auth = FirebaseAuth.getInstance()
+    var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
+    var showRegister by remember { mutableStateOf(false) }
+
+    if (!isLoggedIn) {
+        if (showRegister) {
+            RegisterScreen(
+                onRegisterSuccess = { isLoggedIn = true },
+                onNavigateToLogin = { showRegister = false }
+            )
+        } else {
+            LoginScreen(
+                onLoginSuccess = { isLoggedIn = true },
+                onNavigateToRegister = { showRegister = true }
+            )
+        }
+    } else {
+        MainAppContent(onSignOut = {
+            auth.signOut()
+            isLoggedIn = false
+        })
+    }
+}
+
+@Composable
+fun MainAppContent(onSignOut: () -> Unit) {
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
 
     var cameraPreviewView by remember { mutableStateOf<PreviewView?>(null) }
@@ -139,6 +166,16 @@ fun AIVisionApp() {
                                 .background(MaterialTheme.colorScheme.background)
                         ) {
                             GuardianScreen()
+                        }
+                    }
+                    3 -> {
+                        // TRANG THỨ 4: Thông tin cá nhân
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        ) {
+                            ProfileScreen(onSignOut = onSignOut)
                         }
                     }
                 }

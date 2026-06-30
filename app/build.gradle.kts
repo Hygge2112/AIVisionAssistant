@@ -1,3 +1,11 @@
+import java.util.Properties
+
+// Đọc local.properties an toàn — file này đã có trong .gitignore
+val localProperties = Properties().also { props ->
+    val file = rootProject.file("local.properties")
+    if (file.exists()) props.load(file.inputStream())
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -20,6 +28,23 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Truyền API Key sang AndroidManifest.xml (dành cho Google Maps)
+        manifestPlaceholders["mapsApiKey"] = localProperties["MAPS_API_KEY"]?.toString() ?: ""
+
+        // Đưa API Key vào BuildConfig để dùng trong code — KHÔNG bao giờ hardcode key trong .kt
+        buildConfigField(
+            "String",
+            "GEMINI_API_KEY",
+            "\"${localProperties["GEMINI_API_KEY"] ?: ""}\""
+        )
+        
+        // Thêm WEB_CLIENT_ID cho Firebase Auth (Google Sign-In)
+        buildConfigField(
+            "String",
+            "WEB_CLIENT_ID",
+            "\"${localProperties["WEB_CLIENT_ID"] ?: ""}\""
+        )
     }
 
     buildTypes {
@@ -37,6 +62,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true   // Bật để dùng BuildConfig.GEMINI_API_KEY trong code
     }
 }
 
@@ -57,6 +83,17 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    
+    // Thư viện Firebase Auth & Google Sign-In
+    implementation("com.google.firebase:firebase-auth-ktx:23.0.0")
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
+    // Thư viện Google Maps Compose
+    implementation("com.google.maps.android:maps-compose:4.4.1")
+    implementation("com.google.android.gms:play-services-maps:18.2.0")
+
     // Thư viện CameraX
     val camerax_version = "1.3.2"
     implementation("androidx.camera:camera-core:$camerax_version")

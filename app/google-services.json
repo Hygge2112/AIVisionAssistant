@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "893942052978",
+    "firebase_url": "https://aivisionassistant-default-rtdb.firebaseio.com",
     "project_id": "aivisionassistant",
     "storage_bucket": "aivisionassistant.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.example.aivisionassistant"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "893942052978-uh5l90abvhu6qg2oa3sm9c9c2bbu4p8j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.aivisionassistant",
+            "certificate_hash": "4d40f1ba783c3140654b181076634753518fd487"
+          }
+        },
+        {
+          "client_id": "893942052978-stld7ju1jlcb5ij2hmrbunthkqe8ulc2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAnGo4YTXwWprCxyyzv5Ui0X1awYHF8NKs"
@@ -20,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "893942052978-stld7ju1jlcb5ij2hmrbunthkqe8ulc2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

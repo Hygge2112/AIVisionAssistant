@@ -2,6 +2,7 @@ package com.example.aivisionassistant.api
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.example.aivisionassistant.BuildConfig  // ← Import BuildConfig từ package gốc
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.generationConfig
@@ -13,10 +14,9 @@ import java.io.ByteArrayOutputStream
 
 class GeminiManager {
 
-    // TODO: BẠN HÃY DÁN API KEY MỚI TẠO VÀO ĐÂY
-    // QUAN TRỌNG: Key cũ đã từng dán vào đây nên được REVOKE ngay trong Google AI Studio.
-    // Không hardcode key thật khi build bản chính thức — hãy đưa vào local.properties + BuildConfig.
-    private val apiKey = "DAN_API_KEY_MOI_VAO_DAY"
+    // API Key được đọc an toàn từ local.properties qua BuildConfig.
+    // KHÔNG bao giờ hardcode key trực tiếp vào đây — xem hướng dẫn trong local.properties.
+    private val apiKey = BuildConfig.GEMINI_API_KEY
 
     // Thiết lập tính cách (System Prompt) cho AI
     private val systemInstructionText = """

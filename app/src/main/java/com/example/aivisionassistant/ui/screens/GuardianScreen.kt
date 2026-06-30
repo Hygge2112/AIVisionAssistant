@@ -31,6 +31,9 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -158,8 +161,46 @@ fun GuardianScreen() {
                         Icon(Icons.Default.CrisisAlert, contentDescription = null, tint = Color.White, modifier = Modifier.size(60.dp))
                         Text("PHÁT HIỆN TÍN HIỆU SOS!", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("Vị trí cứu hộ khẩn cấp:", color = Color.White)
-                        Text(victimAddress, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        if (victimLat != 0.0) {
+                            val victimPosition = LatLng(victimLat, victimLng)
+                            val cameraPositionState = rememberCameraPositionState {
+                                position = CameraPosition.fromLatLngZoom(victimPosition, 16f)
+                            }
+
+                            // Tự động di chuyển camera khi vị trí thay đổi
+                            LaunchedEffect(victimLat, victimLng) {
+                                cameraPositionState.position = CameraPosition.fromLatLngZoom(
+                                    LatLng(victimLat, victimLng), 16f
+                                )
+                            }
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth().height(250.dp),
+                                shape = RoundedCornerShape(24.dp)
+                            ) {
+                                GoogleMap(
+                                    modifier = Modifier.fillMaxSize(),
+                                    cameraPositionState = cameraPositionState
+                                ) {
+                                    Marker(
+                                        state = MarkerState(position = victimPosition),
+                                        title = "Vị trí người thân",
+                                        snippet = victimAddress
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "📍 $victimAddress",
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                color = Color.White
+                            )
+                        } else {
+                            Text("Vị trí cứu hộ khẩn cấp:", color = Color.White)
+                            Text(victimAddress, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        }
 
                         Spacer(modifier = Modifier.height(20.dp))
                         // NÚT MỞ GOOGLE MAPS
