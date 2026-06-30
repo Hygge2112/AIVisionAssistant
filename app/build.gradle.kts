@@ -80,4 +80,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
     // Thư viện quét vật thể tốc độ cao của TensorFlow Lite
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }
