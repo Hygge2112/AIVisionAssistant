@@ -24,6 +24,14 @@ import com.example.aivisionassistant.ui.screens.*
 import com.example.aivisionassistant.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.Icons
+import androidx.compose.ui.graphics.Color
+import android.speech.tts.TextToSpeech
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,8 +81,23 @@ fun MainAppContent(onSignOut: () -> Unit) {
     var detectedObject by remember { mutableStateOf("Đang quét...") }
     var detectedDistance by remember { mutableStateOf("...") }
     var isDangerZone by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(true) }
 
     val context = LocalContext.current
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(context) {
+        val textToSpeech = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                // TTS is ready
+            }
+        }
+        tts = textToSpeech
+        onDispose {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
+        }
+    }
+
     val vibrator = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
@@ -118,11 +141,14 @@ fun MainAppContent(onSignOut: () -> Unit) {
                 .padding(paddingValues)
         ) {
             CameraContent(
+                isScanning = isScanning,
                 onPreviewViewCreated = { cameraPreviewView = it },
                 onObjectDetected = { objName, distance, isDanger ->
-                    detectedObject = objName
-                    detectedDistance = distance
-                    isDangerZone = isDanger
+                    if (isScanning) {
+                        detectedObject = objName
+                        detectedDistance = distance
+                        isDangerZone = isDanger
+                    }
                 }
             )
 
@@ -147,12 +173,63 @@ fun MainAppContent(onSignOut: () -> Unit) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onDoubleTap = {
+                                            isScanning = !isScanning
+                                            if (!isScanning) {
+                                                detectedObject = "Đã tạm dừng quét"
+                                                detectedDistance = ""
+                                                isDangerZone = false
+                                                tts?.speak("Đã tắt quét mắt thần", TextToSpeech.QUEUE_FLUSH, null, null)
+                                            } else {
+                                                detectedObject = "Đang quét..."
+                                                detectedDistance = "..."
+                                                tts?.speak("Đã bật quét", TextToSpeech.QUEUE_FLUSH, null, null)
+                                            }
+                                        }
+                                    )
+                                }
                                 .padding(bottom = 16.dp),
                             contentAlignment = Alignment.BottomCenter
                         ) {
                             Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)) {
-                                VoiceRecognitionScreen(cameraPreviewView)
+                                VoiceRecognitionScreen(cameraPreviewView, isScanning)
                             }
+                            
+                            // Nút nhấn lớn ở giữa màn hình
+                            Box(modifier = Modifier.align(Alignment.Center)) {
+                                IconButton(
+                                    onClick = {
+                                        isScanning = !isScanning
+                                        if (!isScanning) {
+                                            detectedObject = "Đã tạm dừng quét"
+                                            detectedDistance = ""
+                                            isDangerZone = false
+                                            tts?.speak("Đã tắt quét mắt thần", TextToSpeech.QUEUE_FLUSH, null, null)
+                                        } else {
+                                            detectedObject = "Đang quét..."
+                                            detectedDistance = "..."
+                                            tts?.speak("Đã bật quét", TextToSpeech.QUEUE_FLUSH, null, null)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .size(100.dp)
+                                        .background(
+                                            color = if (isScanning) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) 
+                                                    else MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                            shape = CircleShape
+                                        )
+                                ) {
+                                    Icon(
+                                        imageVector = if (isScanning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = "Toggle Scan",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(50.dp)
+                                    )
+                                }
+                            }
+
                             Box(modifier = Modifier.align(Alignment.BottomCenter)) {
                                 VisionInfoCard(detectedObject, detectedDistance, isDangerZone)
                             }

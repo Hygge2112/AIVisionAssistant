@@ -68,7 +68,7 @@ private fun isOcrRequest(text: String): Boolean {
 }
 
 @Composable
-fun VoiceRecognitionScreen(previewView: PreviewView?) {
+fun VoiceRecognitionScreen(previewView: PreviewView?, isScanning: Boolean) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val geminiManager = remember { GeminiManager() }
@@ -155,7 +155,13 @@ fun VoiceRecognitionScreen(previewView: PreviewView?) {
     }
 
     // Quản lý Vòng đời an toàn của Bộ nhận diện giọng nói
-    DisposableEffect(speechRecognizerTrigger) {
+    DisposableEffect(speechRecognizerTrigger, isScanning) {
+        if (!isScanning) {
+            isListening = false
+            recognizedText = "Đã tạm dừng nhận diện giọng nói"
+            return@DisposableEffect onDispose {}
+        }
+
         val speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
 
         speechRecognizer.setRecognitionListener(object : RecognitionListener {

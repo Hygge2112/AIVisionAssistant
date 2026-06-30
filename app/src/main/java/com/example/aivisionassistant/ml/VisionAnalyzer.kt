@@ -12,6 +12,8 @@ class VisionAnalyzer(
     private val context: Context,
     private val onObjectDetected: (String, String, Boolean) -> Unit
 ) : ImageAnalysis.Analyzer {
+    
+    var isScanning: Boolean = true
 
     private var objectDetector: ObjectDetector? = null
 
@@ -31,6 +33,11 @@ class VisionAnalyzer(
 
     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
+        if (!isScanning) {
+            imageProxy.close()
+            return
+        }
+
         val bitmap = imageProxy.toBitmap()
 
         // ĐÃ FIX: Xoay ảnh về đúng chiều dọc (Portrait) trước khi đưa cho AI phân tích
