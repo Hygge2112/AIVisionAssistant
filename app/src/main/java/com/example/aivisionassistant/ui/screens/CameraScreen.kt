@@ -31,6 +31,7 @@ import java.util.concurrent.Executors // ĐÃ THÊM: Thư viện quản lý Đa 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraContent(
+    isScanning: Boolean,
     onPreviewViewCreated: (PreviewView) -> Unit,
     onObjectDetected: (String, String, Boolean) -> Unit
 ) {
@@ -50,7 +51,7 @@ fun CameraContent(
     }
 
     if (permissionsState.allPermissionsGranted) {
-        CameraPreviewScreen(onPreviewViewCreated, onObjectDetected)
+        CameraPreviewScreen(isScanning, onPreviewViewCreated, onObjectDetected)
     } else {
         Box(
             modifier = Modifier.fillMaxSize().background(Color.DarkGray),
@@ -68,6 +69,7 @@ fun CameraContent(
 
 @Composable
 fun CameraPreviewScreen(
+    isScanning: Boolean,
     onPreviewViewCreated: (PreviewView) -> Unit,
     onObjectDetected: (String, String, Boolean) -> Unit
 ) {
@@ -79,6 +81,13 @@ fun CameraPreviewScreen(
     val aiExecutor = remember { Executors.newSingleThreadExecutor() }
 
     // Tự động dọn dẹp bộ nhớ luồng ngầm khi người dùng thoát màn hình
+    val analyzer = remember {
+        VisionAnalyzer(context) { label, distance, isDanger ->
+            onObjectDetected(label, distance, isDanger)
+        }
+    }
+    analyzer.isScanning = isScanning
+
     DisposableEffect(Unit) {
         onDispose {
             aiExecutor.shutdown()
@@ -107,9 +116,7 @@ fun CameraPreviewScreen(
                     .build()
                     .also {
                         // ĐÃ FIX 2: Giao việc phân tích ảnh cho Luồng ngầm (aiExecutor) xử lý!
-                        it.setAnalyzer(aiExecutor, VisionAnalyzer(ctx) { label, distance, isDanger ->
-                            onObjectDetected(label, distance, isDanger)
-                        })
+                        it.setAnalyzer(aiExecutor, analyzer)
                     }
 
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
