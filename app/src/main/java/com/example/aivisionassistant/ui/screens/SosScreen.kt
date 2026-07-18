@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.compose.animation.*
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -14,10 +15,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.*
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,10 +36,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aivisionassistant.utils.LocationHelper
-import com.example.aivisionassistant.utils.PairingManager // ĐÃ THÊM: Import bộ quản lý kết nối Firebase
+import com.example.aivisionassistant.utils.PairingManager
+import com.google.firebase.auth.FirebaseAuth
+import android.content.Intent
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SosScreen() {
@@ -41,15 +52,18 @@ fun SosScreen() {
     val coroutineScope = rememberCoroutineScope()
 
     val locationHelper = remember { LocationHelper(context) }
-    val pairingManager = remember { PairingManager() } // ĐÃ THÊM: Khởi tạo PairingManager
+    val pairingManager = remember { PairingManager() }
 
-    // ĐÃ THÊM: Sinh ra mã 6 số duy nhất cho phiên làm việc này
-    val pairingCode = remember { pairingManager.generatePairingCode() }
+    // Mã kết nối cố định theo tài khoản — rỗng lúc đầu, sẽ được điền sau khi tải từ Firebase
+    var pairingCode by remember { mutableStateOf("") }
+    var isCodeLoading by remember { mutableStateOf(true) } // true = đang tải mã từ Firebase
 
     var address by remember { mutableStateOf("Đang định vị trí của bạn...") }
     var currentLocation by remember { mutableStateOf<Location?>(null) }
     var sosState by remember { mutableStateOf("STANDBY") } // STANDBY, SENDING, SENT
     var isPairingCreated by remember { mutableStateOf(false) }
+    // Trạng thái xác nhận: người thân đã nhận tín hiệu SOS chưa?
+    var isAcknowledged by remember { mutableStateOf(false) }
 
     val vibrator = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -61,17 +75,114 @@ fun SosScreen() {
         }
     }
 
-    // Tự động quét vị trí và đẩy phòng lên Firebase ngay khi mở màn hình
-    LaunchedEffect(Unit) {
-        // 1. Lấy vị trí và địa chỉ từ GPS phần cứng
-        val result = locationHelper.getCurrentLocationAndAddress()
-        currentLocation = result.first
-        address = result.second
+    // ── Text-to-Speech: khởi tạo và tự giải phóng khi rời màn hình ─────────────
+    // Dùng var riêng biệt trước để tránh lỗi forward reference trong lambda
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(context) {
+        var ttsEngine: TextToSpeech? = null   // khai báo trước
+        ttsEngine = TextToSpeech(context) { status ->
+            // Callback này chạy bất đồng bộ → ttsEngine đã được gán xong
+            if (status == TextToSpeech.SUCCESS) {
+                val result = ttsEngine?.setLanguage(Locale("vi", "VN"))
+                when (result) {
+                    TextToSpeech.LANG_MISSING_DATA -> {
+                        // Giọng Việt chưa được cài → tự động mở dialog tải về
+                        val installIntent = Intent(
+                            TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(installIntent)
+                        // Trong khi chờ tải: tạm dùng tiếng Anh
+                        ttsEngine?.setLanguage(Locale.US)
+                    }
+                    TextToSpeech.LANG_NOT_SUPPORTED -> {
+                        // Ngôn ngữ không hỗ trợ → fallback tiếng Anh
+                        ttsEngine?.setLanguage(Locale.US)
+                    }
+                    // else: đã cài đặt tiếng Việt thành công ✓
+                }
+            }
+        }
+        tts = ttsEngine
+        onDispose {
+            ttsEngine?.stop()
+            ttsEngine?.shutdown()
+        }
+    }
 
-        // 2. Khởi tạo dữ liệu phòng chờ trên Firebase bằng luồng IO IO-Thread
-        coroutineScope.launch(Dispatchers.IO) {
-            val success = pairingManager.createPairingSession(pairingCode)
-            isPairingCreated = success
+    // Tải mã cố định từ Firebase và khởi tạo phòng kết nối khi mở màn hình
+    LaunchedEffect(Unit) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+
+        // Chạy song song: lấy vị trí + lấy mã kết nối từ Firebase
+        withContext(Dispatchers.IO) {
+            // 1. Lấy vị trí GPS
+            val result = locationHelper.getCurrentLocationAndAddress()
+            withContext(Dispatchers.Main) {
+                currentLocation = result.first
+                address = result.second
+            }
+
+            // 2. Lấy hoặc tạo mã kết nối cố định gắn với uid
+            if (uid != null) {
+                val code = pairingManager.getOrCreatePairingCode(uid)
+                withContext(Dispatchers.Main) {
+                    pairingCode = code
+                    isCodeLoading = false
+                }
+
+                // 3. Khởi tạo phòng kết nối trên Firebase (chỉ tạo mới nếu chưa có)
+                val success = pairingManager.createPairingSession(code)
+                withContext(Dispatchers.Main) {
+                    isPairingCreated = success
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    isCodeLoading = false
+                    address = "Lỗi: Chưa đăng nhập tài khoản!"
+                }
+            }
+        }
+    }
+
+    // ── Lắng nghe Firebase: người thân có xác nhận nhận cứu hộ không? ────────
+    // Chỉ bật listener khi đã gửi SOS (sosState == "SENT") và có mã hợp lệ
+    DisposableEffect(sosState, pairingCode) {
+        var ackListener: ValueEventListener? = null
+
+        if (sosState == "SENT" && pairingCode.isNotEmpty()) {
+            val ackRef = FirebaseDatabase.getInstance()
+                .getReference("pairings/$pairingCode/acknowledged")
+
+            ackListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val acked = snapshot.getValue(Boolean::class.java) ?: false
+                    isAcknowledged = acked
+                }
+                override fun onCancelled(error: DatabaseError) { /* bỏ qua */ }
+            }
+            ackRef.addValueEventListener(ackListener)
+        }
+
+        onDispose {
+            if (pairingCode.isNotEmpty()) {
+                val ackRef = FirebaseDatabase.getInstance()
+                    .getReference("pairings/$pairingCode/acknowledged")
+                ackListener?.let { ackRef.removeEventListener(it) }
+            }
+        }
+    }
+
+    // ── Đọc thông báo bằng giọng nói khi người thân xác nhận ────────────────
+    LaunchedEffect(isAcknowledged) {
+        if (isAcknowledged) {
+            val message = "Đã có người thân xác nhận. Họ đang trên đường đến chỗ bạn. Hãy giữ bình tĩnh."
+            // Đọc lần 1 ngay lập tức
+            tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "ack_1")
+            // Đọc lần 2 sau 4 giây để đảm bảo người khiếm thị nghe rõ
+            delay(4000)
+            tts?.speak(message, TextToSpeech.QUEUE_ADD, null, "ack_2")
         }
     }
 
@@ -118,18 +229,68 @@ fun SosScreen() {
                             fontWeight = FontWeight.Bold
                         )
                     }
+                    if (isCodeLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(38.dp).padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    } else {
+                        Text(
+                            text = pairingCode.chunked(3).joinToString(" "), // Định dạng "526 336" cho dễ đọc
+                            fontSize = 38.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            letterSpacing = 6.sp
+                        )
+                    }
                     Text(
-                        text = pairingCode,
-                        fontSize = 38.sp,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        letterSpacing = 6.sp // Tạo khoảng cách giữa các con số cho dễ đọc
-                    )
-                    Text(
-                        text = if (isPairingCreated) "Máy chủ đám mây đã sẵn sàng liên kết" else "Đang đồng bộ với máy chủ đám mây...",
+                        text = when {
+                            isCodeLoading -> "Đang tải mã định danh của bạn..."
+                            isPairingCreated -> "Mã cố định — người thân chỉ cần nhập 1 lần"
+                            else -> "Đang đồng bộ với máy chủ đám mây..."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )
+                }
+            }
+
+            // 1b. Banner xác nhận — hiện ra khi người thân đã nhấn ĐÃ NHẬN
+            AnimatedVisibility(
+                visible = isAcknowledged && sosState == "SENT",
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(animationSpec = tween(400)),
+                exit = fadeOut()
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "Người thân đã nhận được!",
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                "Họ đang trên đường đến chỗ bạn.",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
                 }
             }
 
@@ -179,6 +340,7 @@ fun SosScreen() {
                 .background(buttonColor)
                 .clickable(enabled = sosState == "STANDBY") {
                     sosState = "SENDING"
+                    isAcknowledged = false // Reset xác nhận trước khi gửi mới
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         vibrator.vibrate(VibrationEffect.createOneShot(1000, VibrationEffect.DEFAULT_AMPLITUDE))
@@ -187,15 +349,20 @@ fun SosScreen() {
                         vibrator.vibrate(1000)
                     }
 
-                    // ĐÃ FIX: Bắn dữ liệu GPS thật lên Firebase Realtime Database
                     coroutineScope.launch(Dispatchers.IO) {
                         val lat = currentLocation?.latitude ?: 0.0
                         val lng = currentLocation?.longitude ?: 0.0
 
-                        // Gọi hàm bắn tín hiệu mạng sang server đám mây
-                        val isSent = pairingManager.sendSosSignal(pairingCode, lat, lng, address)
+                        // Reset acknowledged trên Firebase trước khi gửi SOS mới
+                        pairingManager.resetAcknowledge(pairingCode)
 
-                        // Quay lại Main Thread để cập nhật giao diện
+                        val isSent = pairingManager.sendSosSignal(pairingCode, lat, lng, address)
+                        
+                        val currentUserUid = FirebaseAuth.getInstance().currentUser?.uid
+                        if (isSent && currentUserUid != null) {
+                            pairingManager.incrementSosCount(currentUserUid)
+                        }
+
                         launch(Dispatchers.Main) {
                             if (isSent) {
                                 sosState = "SENT"
@@ -232,10 +399,15 @@ fun SosScreen() {
 
         // 4. Dòng chữ hướng dẫn dưới cùng màn hình
         Text(
-            text = if (sosState == "STANDBY") "Hãy đọc mã số trên cho người thân nhập vào ứng dụng kết nối giám sát." else "Tín hiệu cứu hộ khẩn cấp đang được truyền đi liên tục!",
+            text = when {
+                sosState == "STANDBY" -> "Hãy đọc mã số trên cho người thân nhập vào ứng dụng kết nối giám sát."
+                isAcknowledged       -> "Người thân đã xác nhận và đang đến. Hãy giữ bình tĩnh!"
+                else                 -> "Tín hiệu cứu hộ đang được truyền đi. Chờ người thân xác nhận..."
+            },
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.outline,
+            color = if (isAcknowledged) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline,
+            fontWeight = if (isAcknowledged) FontWeight.Bold else FontWeight.Normal,
             modifier = Modifier.padding(bottom = 16.dp)
         )
     }
