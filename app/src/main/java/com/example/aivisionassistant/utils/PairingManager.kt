@@ -1,10 +1,11 @@
 package com.example.aivisionassistant.utils
 
+import android.content.Context
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.tasks.await
 import kotlin.random.Random
 
-class PairingManager {
+class PairingManager(private val context: Context) {
 
     // Khởi tạo kết nối với máy chủ Firebase Realtime Database
     private val database = FirebaseDatabase.getInstance().reference
@@ -64,12 +65,21 @@ class PairingManager {
                     "latitude" to 0.0,
                     "longitude" to 0.0,
                     "address" to "",
-                    "timestamp" to System.currentTimeMillis()
+                    "timestamp" to System.currentTimeMillis(),
+                    "name" to DeviceHelper.getDeviceName(),
+                    "battery" to DeviceHelper.getBatteryPercentage(context),
+                    "network" to DeviceHelper.getNetworkType(context)
                 )
                 ref.setValue(initialData).await()
             } else {
-                // Phòng đã tồn tại → chỉ reset về STANDBY, giữ lại thông tin khác
-                ref.child("status").setValue("STANDBY").await()
+                // Phòng đã tồn tại → reset về STANDBY và cập nhật lại thông tin thiết bị
+                val updateData = mapOf(
+                    "status" to "STANDBY",
+                    "name" to DeviceHelper.getDeviceName(),
+                    "battery" to DeviceHelper.getBatteryPercentage(context),
+                    "network" to DeviceHelper.getNetworkType(context)
+                )
+                ref.updateChildren(updateData).await()
             }
             true
         } catch (e: Exception) {
@@ -88,7 +98,10 @@ class PairingManager {
                 "latitude" to lat,
                 "longitude" to lng,
                 "address" to address,
-                "timestamp" to System.currentTimeMillis()
+                "timestamp" to System.currentTimeMillis(),
+                "name" to DeviceHelper.getDeviceName(),
+                "battery" to DeviceHelper.getBatteryPercentage(context),
+                "network" to DeviceHelper.getNetworkType(context)
             )
 
             // Cập nhật dữ liệu vào đúng cái mã ghép đôi đó

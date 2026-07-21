@@ -55,7 +55,7 @@ private const val KEY_SAVED_CODE = "saved_pairing_code"
 fun GuardianScreen() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val pairingManager = remember { PairingManager() }
+    val pairingManager = remember { PairingManager(context) }
 
     // ── SharedPreferences: đọc mã đã lưu từ lần trước ──────────────────────
     val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
@@ -326,6 +326,7 @@ fun GuardianScreen() {
                                 GoogleMap(
                                     modifier = Modifier.fillMaxSize(),
                                     cameraPositionState = cameraPositionState,
+                                    onMapClick = { openGoogleMapsNavigation() },
                                     // Tắt tương tác scroll/zoom để giữ nguyên click mở Maps
                                     uiSettings = MapUiSettings(
                                         scrollGesturesEnabled = false,

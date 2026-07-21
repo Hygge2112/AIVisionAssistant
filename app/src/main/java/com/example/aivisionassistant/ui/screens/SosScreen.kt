@@ -52,7 +52,7 @@ fun SosScreen() {
     val coroutineScope = rememberCoroutineScope()
 
     val locationHelper = remember { LocationHelper(context) }
-    val pairingManager = remember { PairingManager() }
+    val pairingManager = remember { PairingManager(context) }
 
     // Mã kết nối cố định theo tài khoản — rỗng lúc đầu, sẽ được điền sau khi tải từ Firebase
     var pairingCode by remember { mutableStateOf("") }

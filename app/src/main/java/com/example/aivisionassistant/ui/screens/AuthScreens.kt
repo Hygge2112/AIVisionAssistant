@@ -446,6 +446,12 @@ fun ProfileScreen(onSignOut: () -> Unit) {
                         onClick = {
                             isEditingPhone = false
                             prefs.edit().putString("emergency_phone", emergencyPhone).apply()
+                            
+                            if (uid.isNotEmpty()) {
+                                FirebaseDatabase.getInstance().reference
+                                    .child("users").child(uid)
+                                    .updateChildren(mapOf("emergencyContact" to emergencyPhone))
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                     ) {
