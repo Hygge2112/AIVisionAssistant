@@ -36,19 +36,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aivisionassistant.utils.PairingManager
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
+import android.webkit.WebView
+import android.webkit.WebSettings
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.maps.android.compose.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 // Key dùng để lưu mã vào SharedPreferences
 private const val PREFS_NAME = "guardian_prefs"
 private const val KEY_SAVED_CODE = "saved_pairing_code"
+private const val KEY_IS_CONNECTED = "is_connected"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,9 +62,10 @@ fun GuardianScreen() {
     // ── SharedPreferences: đọc mã đã lưu từ lần trước ──────────────────────
     val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     val savedCode = remember { prefs.getString(KEY_SAVED_CODE, "") ?: "" }
+    val savedIsConnected = remember { prefs.getBoolean(KEY_IS_CONNECTED, false) }
 
     var inputCode by remember { mutableStateOf(savedCode) }
-    var isConnected by remember { mutableStateOf(false) }
+    var isConnected by remember { mutableStateOf(savedIsConnected) }
     var hasSavedCode by remember { mutableStateOf(savedCode.length == 6) }
 
     // ── Dữ liệu nạn nhân ────────────────────────────────────────────────────
@@ -251,6 +254,7 @@ fun GuardianScreen() {
                     }
                 }
                 isConnected = !isConnected
+                prefs.edit().putBoolean(KEY_IS_CONNECTED, isConnected).apply()
             },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(14.dp),
@@ -304,87 +308,14 @@ fun GuardianScreen() {
                         Spacer(modifier = Modifier.height(12.dp))
 
                         if (victimLat != 0.0) {
-                            val victimPosition = LatLng(victimLat, victimLng)
-                            val cameraPositionState = rememberCameraPositionState {
-                                position = CameraPosition.fromLatLngZoom(victimPosition, 16f)
-                            }
-
-                            LaunchedEffect(victimLat, victimLng) {
-                                cameraPositionState.position = CameraPosition.fromLatLngZoom(
-                                    LatLng(victimLat, victimLng), 16f
-                                )
-                            }
-
-                            // ── Bản đồ có thể NHẤN VÀO để mở Google Maps ─────────
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(240.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .clickable { openGoogleMapsNavigation() }
-                            ) {
-                                GoogleMap(
-                                    modifier = Modifier.fillMaxSize(),
-                                    cameraPositionState = cameraPositionState,
-                                    onMapClick = { openGoogleMapsNavigation() },
-                                    // Tắt tương tác scroll/zoom để giữ nguyên click mở Maps
-                                    uiSettings = MapUiSettings(
-                                        scrollGesturesEnabled = false,
-                                        zoomGesturesEnabled = false,
-                                        tiltGesturesEnabled = false,
-                                        rotationGesturesEnabled = false,
-                                        zoomControlsEnabled = false
-                                    )
-                                ) {
-                                    Marker(
-                                        state = MarkerState(position = victimPosition),
-                                        title = "Vị trí người thân",
-                                        snippet = victimAddress
-                                    )
-                                }
-
-                                // Overlay "Nhấn để dẫn đường" ở góc dưới bản đồ
-                                Row(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .fillMaxWidth()
-                                        .background(Color.Black.copy(alpha = 0.55f))
-                                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        Icons.Default.OpenInNew,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        "Nhấn để mở Google Maps dẫn đường",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Vị trí cứu hộ:", color = Color.White, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 "📍 $victimAddress",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyLarge,
                                 textAlign = TextAlign.Center,
                                 color = Color.White,
-                                fontWeight = FontWeight.Medium
-                            )
-                        } else {
-                            Text("Vị trí cứu hộ:", color = Color.White, fontSize = 14.sp)
-                            Text(
-                                victimAddress,
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
+                                fontWeight = FontWeight.Bold
                             )
                         }
 

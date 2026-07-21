@@ -90,9 +90,8 @@ dependencies {
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
-    // Thư viện Google Maps Compose
-    implementation("com.google.maps.android:maps-compose:4.4.1")
-    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    // Thư viện OpenStreetMap
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
     // Thư viện CameraX
     val camerax_version = "1.3.2"
